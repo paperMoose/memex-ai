@@ -1,5 +1,5 @@
 ---
-description: When a target profile or ICP is mentioned follow these rules. This is how you analyze and create that file. 
+description: 
 globs: 
 alwaysApply: false
 ---
@@ -16,6 +16,7 @@ This rule outlines how the AI assistant should help update the `target-profiles.
         *   `python status_reporter.py --dump-content leads`
         *   `python status_reporter.py --dump-content projects`
         *   `python status_reporter.py --dump-content people`
+        *.   `python status_reporter.py --include-people-reminders` to grab reminders 
     *   The AI will inform the user that it's gathering this information.
 
 3.  **Analyze Content:**

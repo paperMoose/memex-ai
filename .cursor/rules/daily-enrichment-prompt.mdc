@@ -1,0 +1,179 @@
+---
+description: Daily CRM enrichment workflow prompt
+globs: 
+alwaysApply: false
+---
+
+# Daily CRM Enrichment Prompt
+
+Use this prompt with Cursor AI to automatically enrich your CRM with latest communications.
+
+## Quick Daily Command
+
+Just say this to Cursor:
+
+```
+Daily sync - enrich my CRM with latest Slack, iMessages, and emails since yesterday
+```
+
+## What Happens
+
+The AI will:
+1. ✅ Run `./scripts/daily_sync.sh yesterday` to collect all communications
+   - Slack: All channels you're in
+   - iMessages: 30 most recent threads (50 messages each)
+   - Emails: 100 received + 100 sent emails (with body content)
+2. ✅ Review the exported Slack messages, iMessages, received emails, and sent emails
+3. ✅ Identify which CRM files need updates (people, leads, projects)
+4. ✅ Suggest enrichments with specific quotes and context
+5. ✅ Apply updates to relevant files
+6. ✅ Update `Last Updated` dates
+7. ✅ Summarize what was enriched
+
+## Full Prompt Template
+
+For more control, use this detailed prompt:
+
+```
+Run daily CRM enrichment:
+
+1. Export communications:
+   - Slack: All channels since [timeframe]
+   - iMessages: Recent threads (30 threads, 50 messages each)
+   - Emails: [optional: specific searches]
+
+2. Review and enrich:
+   - Read all exported conversations
+   - Identify people, companies, projects mentioned
+   - Find matching CRM files in /people/, /active_leads/, /projects/
+   - Add relevant conversation excerpts to "Interaction Notes" or "Meeting Notes" sections
+   - Update status if projects/leads have status changes
+   - Create new files if new contacts/leads discovered
+
+3. Update metadata:
+   - Update "Last Updated" field to today's date
+   - Add dates to conversation summaries (YYYY-MM-DD format)
+
+4. Summarize changes:
+   - List all files updated
+   - Show key insights captured
+   - Highlight action items discovered
+```
+
+## Customization Options
+
+### Time Ranges
+- `since yesterday` - Yesterday's activity (good for morning routine)
+- `since today` - Today only (good for end-of-day review)
+- `since last-week` - Past 7 days (good for Monday morning)
+- `since 2025-11-01` - Specific date range
+
+### Specific Sources
+- `Slack only` - Just Slack messages
+- `iMessages only` - Just iMessage conversations
+- `Slack and iMessages` - Skip email
+- `All sources` - Everything
+
+### Specific People/Companies
+- `Focus on: Jane Doe, John Smith` - Only conversations with specific people
+- `Focus on: Acme Corp, TechStartup` - Only conversations about specific companies
+- `Exclude: social channel` - Skip certain channels
+
+## Example Prompts
+
+### Morning Routine
+```
+Daily sync - enrich CRM with yesterday's Slack and iMessages
+```
+
+### End of Day
+```
+Sync today's activity across all sources and update CRM
+```
+
+### Weekly Review
+```
+Weekly sync - get last week's Slack, iMessages, and enrich all relevant CRM files
+```
+
+### Focused Sync
+```
+Get latest Slack messages from project-alpha and client-beta channels,
+enrich the project file and related people files
+```
+
+### After Big Meeting
+```
+Get today's iMessages with [person name], enrich their people file and 
+any related project files with key discussion points
+```
+
+## What Gets Enriched
+
+### People Files (`/people/*.md`)
+- **Interaction Notes section**: Add conversation summaries with dates
+- **Background**: Update role, company changes
+- **Related Projects**: Link to new projects discussed
+
+### Lead Files (`/active_leads/*.md`)
+- **Status**: Update stage, next steps
+- **Discussion Notes**: Add meeting summaries
+- **Action Items**: Extract tasks and deadlines
+
+### Project Files (`/projects/*.md`)
+- **Meeting Notes section**: Add dated meeting summaries
+- **Status**: Update current status, milestones
+- **Action Items**: Extract and prioritize tasks
+
+## Automation Tips
+
+### Daily Habit
+Add to your morning routine:
+1. Open Cursor in CRM workspace
+2. Say: "Daily sync - enrich CRM with yesterday's activity"
+3. Review changes (AI shows what was updated)
+4. Done!
+
+### Aliases (Optional)
+Add to your shell profile (`~/.zshrc`):
+
+```bash
+# CRM aliases
+alias crm-sync='cd ~/git/memex-ai && ./scripts/daily_sync.sh yesterday'
+alias crm-today='cd ~/git/memex-ai && ./scripts/daily_sync.sh today'
+alias crm-week='cd ~/git/memex-ai && ./scripts/daily_sync.sh last-week'
+```
+
+Then in Cursor, just say:
+```
+I ran crm-sync, now enrich my CRM with the exported data
+```
+
+## Manual Review Workflow
+
+If you prefer to review before enrichment:
+
+1. **Export data**:
+   ```bash
+   ./scripts/daily_sync.sh yesterday
+   ```
+
+2. **Review exports** in `/tmp/crm_daily_sync_TIMESTAMP/`:
+   ```bash
+   less /tmp/crm_daily_sync_*/slack.md
+   less /tmp/crm_daily_sync_*/imessages.md
+   less /tmp/crm_daily_sync_*/emails_received.md
+   less /tmp/crm_daily_sync_*/emails_sent.md
+   ```
+
+3. **Ask AI to enrich**:
+   ```
+   Review the exports in /tmp/crm_daily_sync_TIMESTAMP/ and enrich 
+   relevant CRM files with key insights
+   ```
+
+## Related Files
+- `scripts/daily_sync.sh` - Data export script
+- `scripts/slack_dump.py` - Slack export tool
+- `scripts/imessage_recent_threads.py` - iMessage export tool
+- `scripts/email_search.py` - Email search tool

@@ -1,0 +1,256 @@
+---
+description: Standard format for action items across all CRM files
+globs:
+alwaysApply: true
+---
+
+# Action Items Standard Format
+
+## Purpose
+Standardize action items across all CRM files to enable automatic extraction, tracking, and prioritization.
+
+## Where Action Items Belong
+
+**Action items should ONLY exist in:**
+- `/active_leads/` - For potential opportunities in the pipeline
+- `/projects/` - For confirmed work and active engagements
+
+**Action items should NEVER exist in:**
+- `/people/` - People files document relationships, not tasks. If you need to do something involving a person, create or reference a lead/project file instead.
+
+**Why this separation?**
+- **People files** are permanent relationship records (who they are, how you met, interactions)
+- **Leads/Projects** are temporary work items that get archived when complete
+- This keeps your active task list focused and prevents stale action items from cluttering people files
+
+## Standard Format
+
+**REQUIRED FORMAT** - All action items MUST follow this exact structure:
+
+```markdown
+- [ ] **PRIORITY:** Task description *(added YYYY-MM-DD)*
+```
+
+### Priority Levels (REQUIRED)
+- `**URGENT:**` - Within 24 hours
+- `**HIGH:**` - Within week
+- `**MEDIUM:**` - Default priority (still must be explicit)
+- `**LOW:**` - When time permits
+
+### Date Tag (REQUIRED)
+- `*(added YYYY-MM-DD)*` - When item was created
+- `*(moved from YYYY-MM-DD)*` - When item was moved from another file
+
+### Complete Examples
+```markdown
+- [ ] **URGENT:** Respond to client's email about partnership proposal *(added 2025-11-13)*
+- [ ] **HIGH:** Follow up on coffee meeting from Nov 10 *(added 2025-11-13)*
+- [ ] **MEDIUM:** Schedule Q1 2026 check-in call *(added 2025-11-08)*
+- [ ] **LOW:** Research competitor pricing *(added 2025-11-12)*
+- [ ] **HIGH:** Task moved from last week *(moved from 2025-11-06)*
+```
+
+### ❌ INVALID FORMATS (Do Not Use)
+```markdown
+- [ ] Task without priority or date
+- [ ] Task with date only *(added 2025-11-13)*
+- [ ] **HIGH:** Task with priority only
+- [ ] 🔴 Task with emoji instead of text priority *(added 2025-11-13)*
+- [ ] URGENT: Task with unbolded priority *(added 2025-11-13)*
+```
+
+---
+
+## Where to Place Action Items
+
+**CRITICAL RULE:** Action items belong ONLY in `/active_leads/` and `/projects/` files.
+
+**❌ NEVER place action items in `/people/` files.** People files document relationships and interactions, not tasks.
+
+### In Project Files
+Place under `## Action Items` section after status and overview:
+
+```markdown
+## Status
+- **Current Status:** In Progress
+- **Next Milestone:** Complete Phase 1
+- **Last Updated:** 2025-11-13
+
+## Overview
+[project details]
+
+## Action Items
+- [ ] **URGENT:** Finalize proposal document
+- [ ] Review technical specifications
+- [ ] Schedule kickoff meeting
+```
+
+### In Lead Files
+Place under `## Action Items` section after status and meeting notes:
+
+```markdown
+## Status
+- **Stage:** Proposal Sent
+- **Next Step:** Follow up on proposal
+- **Last Updated:** 2025-11-13
+
+## Action Items
+- [ ] Follow up in 3 days if no response
+- [ ] Prepare pricing alternatives
+```
+
+### In Task Context Files
+Place under `## Completion Criteria` as deliverables:
+
+```markdown
+## Completion Criteria
+- [ ] Deliverable 1 *(added 2025-11-13, from update 2025-11-13)*
+- [ ] Deliverable 2 *(added 2025-11-13, from update 2025-11-13)*
+```
+
+---
+
+## Priority Levels
+
+### 🔴 URGENT (Priority 1)
+- Requires immediate attention (within 24 hours)
+- Blocking other work
+- Has external deadline
+- Client-facing and time-sensitive
+
+**Keywords:** URGENT, ASAP, CRITICAL, BLOCKER
+
+### 🟡 HIGH (Priority 2)
+- Important but not immediate (within week)
+- Key business relationships
+- Revenue-generating activities
+- Strategic opportunities
+
+**Keywords:** HIGH, IMPORTANT, PRIORITY
+
+### 🟢 MEDIUM (Priority 3)
+- Standard work items
+- Regular follow-ups
+- General maintenance tasks
+- Default priority level
+
+**Keyword REQUIRED:** `**MEDIUM:**` (must be explicit, no defaults)
+
+### ⚪ LOW (Priority 4)
+- Nice to have
+- Can be deferred
+- Low impact if delayed
+- Background tasks
+
+**Keywords:** LOW, NICE-TO-HAVE, OPTIONAL, WHEN-TIME-PERMITS
+
+---
+
+## Best Practices
+
+### DO ✅
+- [ ] **Be specific:** "Call John about Q1 project pricing" not "Follow up with John"
+- [ ] **ALWAYS add priority:** Use `**URGENT:**`, `**HIGH:**`, `**MEDIUM:**`, or `**LOW:**`
+- [ ] **ALWAYS add date:** Include `*(added YYYY-MM-DD)*` when creating
+- [ ] **One action per line:** Don't combine multiple actions
+- [ ] **Use consistent sections:** Always place under `## Action Items` heading
+- [ ] **Link references:** Use `[file](mdc:path/to/file.md)` for task context files
+- [ ] **Follow exact format:** `- [ ] **PRIORITY:** Task *(added YYYY-MM-DD)*`
+- [ ] **Place in correct files:** ONLY in `/active_leads/` or `/projects/` files, NEVER in `/people/` files
+
+### DON'T ❌
+- [ ] ~~Vague actions~~ → "Do the thing" (too vague)
+- [ ] ~~Multiple actions~~ → "Call John and email Sarah and book meeting" (split these)
+- [ ] ~~No context~~ → Items without enough detail to execute
+- [ ] ~~Scattered placement~~ → Action items placed randomly in file
+- [ ] ~~Missing priority~~ → Every action item MUST have a priority marker
+- [ ] ~~Missing date~~ → Every action item MUST have a date tag
+- [ ] ~~Emoji priorities~~ → Use text (`**URGENT:**`) not emoji (🔴)
+- [ ] ~~Unbolded priorities~~ → Must be `**URGENT:**` not `URGENT:`
+- [ ] ~~Action items in people files~~ → People files are for relationship documentation, not tasks
+
+---
+
+## Automatic Updates
+
+When the AI updates files:
+
+1. **Adding new action items:** 
+   - MUST include both `**PRIORITY:**` and `*(added YYYY-MM-DD)*`
+   - Format: `- [ ] **PRIORITY:** Task description *(added YYYY-MM-DD)*`
+2. **Moving to done:** Change `- [ ]` to `- [x]`
+3. **Removing:** Delete line entirely (if no longer relevant)
+4. **Deferring:** Move to new file with `*(moved from YYYY-MM-DD)*` tag
+5. **Updating Last Updated field:** Always update file's `Last Updated` to current date when changing action items
+6. **Fixing old action items:** Add missing priority/date tags to bring into compliance
+
+---
+
+## Examples by File Type
+
+**Remember:** Action items ONLY belong in `/active_leads/` and `/projects/` files, NOT in `/people/` files.
+
+### Project File Example
+```markdown
+# Project Name
+
+## Status
+- **Current Status:** In Progress
+- **Next Milestone:** Phase 1 completion
+- **Last Updated:** 2025-11-13
+
+## Action Items
+- [ ] **URGENT:** Submit Phase 1 deliverables by Friday *(added 2025-11-13)*
+- [ ] **HIGH:** Review client feedback on wireframes *(added 2025-11-12)*
+- [ ] **MEDIUM:** Schedule Phase 2 kickoff for next week *(added 2025-11-11)*
+- [ ] **LOW:** Update project timeline with revised dates *(added 2025-11-10)*
+```
+
+### Lead File Example
+```markdown
+# Acme Corp Lead
+
+## Status
+- **Stage:** Proposal Sent
+- **Next Step:** Follow up on pricing
+- **Last Updated:** 2025-11-13
+
+## Action Items
+- [ ] **URGENT:** Respond to pricing questions by EOD *(added 2025-11-13)*
+- [ ] **HIGH:** Prepare alternative pricing options *(added 2025-11-12)*
+- [ ] **MEDIUM:** Research competitor pricing *(added 2025-11-12)*
+- [ ] **LOW:** Schedule follow-up call if no response by Friday *(added 2025-11-10)*
+```
+
+---
+
+## Script Integration
+
+The `action_items_report.py` script extracts these automatically:
+
+```bash
+# Show all action items across CRM
+python3 scripts/action_items_report.py
+
+# Show only urgent items
+python3 scripts/action_items_report.py --priority URGENT
+
+# Export as markdown
+python3 scripts/action_items_report.py --format markdown --output action_items.md
+```
+
+The script automatically:
+- Detects priority from keywords and emojis
+- Extracts dates from `*(added YYYY-MM-DD)*` tags
+- Finds context from section headers
+- Sorts by priority and date
+- Outputs with full file paths for easy navigation
+
+---
+
+## Related Files
+- `.cursor/rules/task_context.mdc` - Task context file structure
+- `.cursor/rules/use-for-all-files-made.mdc` - General file standards
+- `scripts/action_items_report.py` - Extraction script
+- `README.md` - CRM overview and standards
+

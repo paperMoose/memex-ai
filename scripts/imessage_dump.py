@@ -10,29 +10,84 @@ Safety:
 
 Usage examples:
   # Print entire conversation history with a contact to stdout
-  python3 scripts/imessage_dump.py --contacts "david corbitt" --since 2001-01-01
+  python3 scripts/imessage_dump.py --contacts "john smith" --since 2001-01-01
 
   # Save as markdown
-  python3 scripts/imessage_dump.py --contacts "david corbitt" \
-    --since 2018-01-01 --output "/tmp/david_corbitt_imessage.md"
+  python3 scripts/imessage_dump.py --contacts "john smith" \
+    --since 2018-01-01 --output "/tmp/john_smith_imessage.md"
 
   # Narrow by multiple handles/tokens (email/phone/name substrings, case-insensitive)
-  python3 scripts/imessage_dump.py --contacts "+14155551234,david@example.com,corbitt" --since yesterday
+  python3 scripts/imessage_dump.py --contacts "+14155551234,john@example.com,smith" --since yesterday
+
+  # Include empty messages (reactions, images, etc.) - excluded by default
+  python3 scripts/imessage_dump.py --contacts "john smith" --since today --include-empty
+
+  # Get the last N messages from a conversation (ignores --since, most recent first)
+  python3 scripts/imessage_dump.py --contacts "jane doe" --last 20
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import glob
 import os
+import plistlib
 import shutil
 import sqlite3
 import sys
 import tempfile
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 APPLE_EPOCH_UNIX = 978307200  # seconds from 1970-01-01 to 2001-01-01
+
+
+def extract_text_from_attributed_body(attributed_body: bytes) -> str:
+    """Extract plain text from NSAttributedString binary plist format."""
+    if not attributed_body:
+        return ""
+    try:
+        data = attributed_body
+
+        # Method 1: Look for NSString marker and extract text after it
+        ns_string_marker = b"NSString"
+        idx = data.find(ns_string_marker)
+        if idx != -1:
+            search_start = idx + len(ns_string_marker)
+            remaining = data[search_start:]
+
+            # Collect candidate strings
+            text_candidates = []
+            i = 0
+            while i < len(remaining):
+                if i + 1 < len(remaining):
+                    potential_len = remaining[i]
+                    if 1 <= potential_len <= 250 and i + 1 + potential_len <= len(remaining):
+                        try:
+                            candidate = remaining[i+1:i+1+potential_len].decode('utf-8')
+                            if candidate and all(c.isprintable() or c in '\n\r\t' for c in candidate):
+                                text_candidates.append(candidate)
+                        except:
+                            pass
+                i += 1
+
+            if text_candidates:
+                # Filter out metadata/internal strings
+                filtered = [t for t in text_candidates
+                           if len(t) > 1
+                           and not t.startswith('NS')
+                           and not t.startswith('__k')
+                           and not t.startswith('at_')
+                           and 'MessagePart' not in t
+                           and 'Attribute' not in t
+                           and 'DataDetected' not in t]
+                if filtered:
+                    return max(filtered, key=len)
+
+        return ""
+    except Exception:
+        return ""
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,7 +123,96 @@ def parse_args() -> argparse.Namespace:
         default="markdown",
         help="Output format (default: markdown)",
     )
+    parser.add_argument(
+        "--include-empty",
+        action="store_true",
+        help="Include messages with no text (reactions, images, etc.)",
+    )
+    parser.add_argument(
+        "--last",
+        type=int,
+        default=0,
+        help="Get the last N messages (ignores --since, returns most recent messages in chronological order)",
+    )
     return parser.parse_args()
+
+
+def load_contacts_mapping() -> Dict[str, str]:
+    """Load phone/email to contact name mapping from macOS Contacts (AddressBook)."""
+    handle_to_name: Dict[str, str] = {}
+    
+    # Find all AddressBook databases (main + sources for different accounts)
+    addressbook_root = os.path.expanduser("~/Library/Application Support/AddressBook")
+    
+    # Check main database
+    main_db = os.path.join(addressbook_root, "AddressBook-v22.abcddb")
+    
+    # Also check all source databases (iCloud, Google, etc.)
+    source_pattern = os.path.join(addressbook_root, "Sources/*/AddressBook-v22.abcddb")
+    all_dbs = [main_db] + glob.glob(source_pattern)
+    
+    for db_path in all_dbs:
+        if not os.path.exists(db_path):
+            continue
+            
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            
+            # Get phone numbers with contact names
+            phone_sql = """
+                SELECT 
+                    p.ZFULLNUMBER as handle,
+                    COALESCE(
+                        TRIM(COALESCE(r.ZFIRSTNAME, '') || ' ' || COALESCE(r.ZLASTNAME, '')),
+                        r.ZORGANIZATION,
+                        'Unknown'
+                    ) as name
+                FROM ZABCDPHONENUMBER p
+                JOIN ZABCDRECORD r ON p.ZOWNER = r.Z_PK
+                WHERE p.ZFULLNUMBER IS NOT NULL AND p.ZFULLNUMBER != ''
+            """
+            
+            for row in conn.execute(phone_sql):
+                # Normalize phone number (store with and without +)
+                phone = row["handle"].strip()
+                name = row["name"].strip()
+                if phone and name and name != "Unknown":
+                    handle_to_name[phone] = name
+                    # Also store without + prefix
+                    if phone.startswith("+"):
+                        handle_to_name[phone[1:]] = name
+                    # Also store formatted version
+                    normalized = phone.replace("+", "").replace("(", "").replace(")", "").replace(" ", "").replace("-", "")
+                    handle_to_name[normalized] = name
+            
+            # Get email addresses with contact names  
+            email_sql = """
+                SELECT 
+                    e.ZADDRESS as handle,
+                    COALESCE(
+                        TRIM(COALESCE(r.ZFIRSTNAME, '') || ' ' || COALESCE(r.ZLASTNAME, '')),
+                        r.ZORGANIZATION,
+                        'Unknown'
+                    ) as name
+                FROM ZABCDEMAILADDRESS e
+                JOIN ZABCDRECORD r ON e.ZOWNER = r.Z_PK
+                WHERE e.ZADDRESS IS NOT NULL AND e.ZADDRESS != ''
+            """
+            
+            for row in conn.execute(email_sql):
+                email = row["handle"].strip().lower()
+                name = row["name"].strip()
+                if email and name and name != "Unknown":
+                    handle_to_name[email] = name
+            
+            conn.close()
+            
+        except Exception as e:
+            # Silently skip databases that can't be read
+            continue
+    
+    return handle_to_name
 
 
 def ensure_copy_readonly(db_path: str) -> str:
@@ -140,6 +284,7 @@ def fetch_messages(
     since_iso: str,
     contact_filters: Sequence[str],
     limit: int = 0,
+    include_empty: bool = False,
 ) -> Iterable[Tuple[int, str, int, str, str, str]]:
     """Yield (message_id, sent_iso, is_from_me, sender_handle, chat_name, text) sorted ASC."""
     conn.row_factory = sqlite3.Row
@@ -151,7 +296,8 @@ def fetch_messages(
             m.is_from_me AS is_from_me,
             COALESCE(h.id, h.uncanonicalized_id, 'me') AS sender,
             COALESCE(c.display_name, c.chat_identifier, 'unknown') AS chat_name,
-            COALESCE(m.text, '') AS text
+            m.text AS text,
+            m.attributedBody AS attributed_body
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
         LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
@@ -160,7 +306,13 @@ def fetch_messages(
         """
     )
     where_contacts, where_params = build_contact_where_clause(contact_filters)
-    sql = base_sql + f" AND ({where_contacts}) ORDER BY m.date ASC"
+    sql = base_sql + f" AND ({where_contacts})"
+
+    # Filter out empty messages (reactions, images, etc.) unless --include-empty is set
+    if not include_empty:
+        sql += " AND (m.text IS NOT NULL AND m.text != '' OR m.attributedBody IS NOT NULL)"
+
+    sql += " ORDER BY m.date ASC"
     if limit and limit > 0:
         sql += " LIMIT ?"
 
@@ -171,24 +323,104 @@ def fetch_messages(
 
     cur = conn.execute(sql, params)
     for row in cur:
+        # Try text field first, then attributedBody
+        text = row["text"] or ""
+        if not text and row["attributed_body"]:
+            text = extract_text_from_attributed_body(row["attributed_body"])
+
+        # Skip if still no text and not including empty
+        if not text and not include_empty:
+            continue
+
         yield (
             int(row["message_id"]),
             str(row["sent_ts"]),
             int(row["is_from_me"] or 0),
             str(row["sender"]),
             str(row["chat_name"]),
-            str(row["text"]),
+            text,
         )
+
+
+def fetch_last_messages(
+    conn: sqlite3.Connection,
+    contact_filters: Sequence[str],
+    last_n: int,
+    include_empty: bool = False,
+) -> List[Tuple[int, str, int, str, str, str]]:
+    """Fetch the last N messages from a conversation, returned in chronological order."""
+    conn.row_factory = sqlite3.Row
+    base_sql = """
+        SELECT
+            m.ROWID AS message_id,
+            datetime(m.date/1000000000 + ?, 'unixepoch') AS sent_ts,
+            m.is_from_me AS is_from_me,
+            COALESCE(h.id, h.uncanonicalized_id, 'me') AS sender,
+            COALESCE(c.display_name, c.chat_identifier, 'unknown') AS chat_name,
+            m.text AS text,
+            m.attributedBody AS attributed_body
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+        LEFT JOIN chat c ON cmj.chat_id = c.ROWID
+        WHERE 1=1
+    """
+    where_contacts, where_params = build_contact_where_clause(contact_filters)
+    sql = base_sql + f" AND ({where_contacts})"
+
+    # Filter out empty messages unless --include-empty is set
+    if not include_empty:
+        sql += " AND (m.text IS NOT NULL AND m.text != '' OR m.attributedBody IS NOT NULL)"
+
+    # Order by most recent first, then limit (fetch more to account for filtering)
+    sql += " ORDER BY m.date DESC LIMIT ?"
+
+    params: List[object] = [APPLE_EPOCH_UNIX]
+    params.extend(where_params)
+    # Fetch extra to account for messages that might be filtered out
+    params.append(last_n * 3)
+
+    cur = conn.execute(sql, params)
+    rows = []
+    for row in cur:
+        # Try text field first, then attributedBody
+        text = row["text"] or ""
+        if not text and row["attributed_body"]:
+            text = extract_text_from_attributed_body(row["attributed_body"])
+
+        # Skip if still no text and not including empty
+        if not text and not include_empty:
+            continue
+
+        rows.append((
+            int(row["message_id"]),
+            str(row["sent_ts"]),
+            int(row["is_from_me"] or 0),
+            str(row["sender"]),
+            str(row["chat_name"]),
+            text,
+        ))
+
+        # Stop once we have enough
+        if len(rows) >= last_n:
+            break
+
+    # Reverse to get chronological order (oldest first)
+    return list(reversed(rows))
 
 
 def write_markdown(
     messages: Iterable[Tuple[int, str, int, str, str, str]],
     contacts_label: str,
-    since_iso: str,
+    since_iso: Optional[str],
     out_path: Optional[str],
+    last_n: int = 0,
 ) -> None:
     lines: List[str] = []
-    header = f"# iMessage Export — {contacts_label}\nExported: {dt.datetime.now():%Y-%m-%d %H:%M}\nSince: {since_iso}\n"
+    if last_n > 0:
+        header = f"# iMessage Export — {contacts_label}\nExported: {dt.datetime.now():%Y-%m-%d %H:%M}\nLast {last_n} messages\n"
+    else:
+        header = f"# iMessage Export — {contacts_label}\nExported: {dt.datetime.now():%Y-%m-%d %H:%M}\nSince: {since_iso}\n"
     lines.append(header)
     for msg_id, sent_ts, is_from_me, sender, chat_name, text in messages:
         who = "Me" if is_from_me else sender
@@ -280,6 +512,28 @@ def main() -> None:
         print("--contacts produced no filters after parsing; provide at least one token", file=sys.stderr)
         sys.exit(2)
 
+    # Load contacts mapping from AddressBook
+    try:
+        contacts_map = load_contacts_mapping()
+        sys.stderr.write(f"Loaded {len(contacts_map)} contact handles from AddressBook\n")
+        
+        # Expand filters: if a filter matches a contact name, also search by their handles
+        expanded_filters = list(contact_filters)
+        for filter_term in contact_filters:
+            for handle, name in contacts_map.items():
+                if filter_term in name.lower():
+                    # Add the actual phone/email handle to filters
+                    handle_lower = handle.lower()
+                    if handle_lower not in expanded_filters:
+                        expanded_filters.append(handle_lower)
+                        sys.stderr.write(f"  Matched '{name}' -> adding handle: {handle}\n")
+        
+        contact_filters = expanded_filters
+        
+    except Exception as e:
+        sys.stderr.write(f"Warning: Could not load contacts mapping: {e}\n")
+        sys.stderr.write("Continuing with original filters only...\n")
+
     copy_path = ensure_copy_readonly(args.db)
     try:
         conn = open_ro_connection(copy_path)
@@ -288,10 +542,23 @@ def main() -> None:
         sys.stderr.write("Tip: Grant Full Disk Access to your terminal under System Settings > Privacy & Security.\n")
         sys.exit(2)
 
-    rows = list(fetch_messages(conn, since_iso, contact_filters, limit=max(0, int(args.limit or 0))))
+    # Use --last mode if specified, otherwise use --since mode
+    last_n = max(0, int(args.last or 0))
+    if last_n > 0:
+        rows = fetch_last_messages(
+            conn, contact_filters,
+            last_n=last_n,
+            include_empty=args.include_empty,
+        )
+    else:
+        rows = list(fetch_messages(
+            conn, since_iso, contact_filters,
+            limit=max(0, int(args.limit or 0)),
+            include_empty=args.include_empty,
+        ))
 
     if args.format == "markdown":
-        write_markdown(rows, ", ".join(contact_filters), since_iso, args.output)
+        write_markdown(rows, ", ".join(contact_filters), since_iso, args.output, last_n=last_n)
     elif args.format == "jsonl":
         write_jsonl(rows, args.output)
     else:

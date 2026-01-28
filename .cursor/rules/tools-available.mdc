@@ -1,0 +1,1304 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Your rule content
+
+# Scripts Directory Documentation
+
+This workspace includes custom automation scripts for managing tasks, reminders, calendars, emails, and iMessages on macOS. All scripts are located in the `scripts/` directory.
+
+---
+
+## 1. Apple Reminders (`reminders_cli.py`)
+
+### What It Does
+Scans markdown files for `@reminder(...)` tags and creates Apple Reminders via AppleScript. Idempotent by design using `@source` markers and a sent log.
+
+### Tag Format
+```markdown
+@reminder(message="Task name", at="2025-08-16 09:30", list="Work", note="optional note", priority=1, flagged=true, id="unique-id")
+```
+
+### Parameters
+- **message** (required): Reminder title/task name
+- **at** (required): When the reminder should trigger. Supports:
+  - Absolute: `YYYY-MM-DD HH:MM` (e.g., `2025-08-20 14:30`)
+  - Relative to today: `today HH:MM` (e.g., `today 17:30`)
+  - Relative to tomorrow: `tomorrow HH:MM` (e.g., `tomorrow 09:00`)
+  - Time offset: `+30m`, `+2h`, `+1d`
+- **list** (optional): Name of Apple Reminders list (e.g., "Work", "Personal")
+- **note** (optional): Additional context; file path references are supported
+- **priority** (optional): 1 (high), 5 (medium), 9 (low)
+- **flagged** (optional): `true` or `false`
+- **id** (optional): Stable identifier for idempotency. Prevents duplicates when moving tags between files or lines
+
+### Usage Examples
+```bash
+# Dry run - show what would be created without creating
+python3 scripts/reminders_cli.py --file "weeks/week of 2025-08-18.md" --dry-run --verbose
+
+# Create/update reminders from a file
+python3 scripts/reminders_cli.py --file "weeks/week of 2025-08-18.md" --verbose
+
+# Report today's reminder load (shows count and suggests if overloaded)
+python3 scripts/reminders_cli.py --report-day today
+
+# Report reminders for a specific date
+python3 scripts/reminders_cli.py --report-day 2025-08-20
+
+# Reset the sent log (forces resend/update of all reminders)
+python3 scripts/reminders_cli.py --file "weeks/week of 2025-08-18.md" --reset-log
+
+# Ignore the sent log (bypass idempotency checks)
+python3 scripts/reminders_cli.py --file "weeks/week of 2025-08-18.md" --ignore-sent-log
+```
+
+### When to Use
+- When the user asks to create reminders for tasks
+- When scheduling work from weekly planning files
+- When checking daily reminder load (use `--report-day today`)
+- After weekly file creation to set up all reminders for the week
+- Use `--report-day` proactively if reminders might be overloaded (7+)
+
+### Special Features
+- **Idempotency**: Uses `.cursor/sent_reminders.json` log to prevent duplicates
+- **Smart First Steps**: Automatically infers actionable first steps based on task type
+- **Load Check**: `--report-day` warns if you have 7+ reminders scheduled
+
+---
+
+## 2. Apple Calendar (`calendar_cli.py`)
+
+### What It Does
+Creates Apple Calendar events from `@calendar(...)` tags in markdown files. Supports focus blocks, meetings, and time-blocked work.
+
+### Tag Format
+```markdown
+@calendar(message="Focus block: Draft PRD", at="2025-08-16 10:00", duration="90m", calendar="Work", location="Desk", note="task_context/prd-file.md")
+```
+
+### Parameters
+- **message** (required): Event title
+- **at** (required): Event start time (same formats as reminders: absolute, today/tomorrow, relative offsets)
+- **duration** (optional): Event length - `30m`, `1h`, `90m` (default: `60m`)
+- **calendar** (optional): Calendar name (defaults to system default)
+- **location** (optional): Event location
+- **note** (optional): Context or file reference
+
+### Usage Examples
+```bash
+# Dry run
+python3 scripts/calendar_cli.py --file "weeks/week of 2025-08-18.md" --dry-run --verbose
+
+# Create calendar events
+python3 scripts/calendar_cli.py --file "weeks/week of 2025-08-18.md" --verbose
+
+# Custom timeout for slow systems
+python3 scripts/calendar_cli.py --file "weeks/week of 2025-08-18.md" --timeout 30
+```
+
+### When to Use
+- For focus blocks (deep work sessions)
+- For scheduled meetings
+- For time-blocking work sessions
+- When planning weekly calendar from markdown
+
+### Special Features
+- **Idempotency**: Embeds `@source` marker in event description
+- **Smart Descriptions**: Infers smallest first step based on event type
+- **Focus-aware**: Recognizes focus blocks and adds helpful context
+
+---
+
+## 3. iMessage Send (`imessage_send.py`)
+
+### What It Does
+Sends iMessages from `@imessage(...)` tags in markdown files. Safe and idempotent - dry-run by default.
+
+### Tag Format
+```markdown
+@imessage(to="+14155551234", message="Hey, quick question about the project")
+@imessage(to="user@example.com", message="Thanks for the intro!")
+@imessage(to="John Smith", message="See you tomorrow")
+```
+
+### Parameters
+- **to** (required): Phone number (+1...), email, or contact name
+- **message** (required): Text to send
+- **id** (optional): Unique identifier for tracking
+
+### Usage Examples
+```bash
+# Dry run (default - shows what would be sent)
+python3 scripts/imessage_send.py --file "weeks/week of 2025-08-18.md"
+
+# Actually send messages (requires --yes)
+python3 scripts/imessage_send.py --file "weeks/week of 2025-08-18.md" --yes --verbose
+
+# Reset sent log (force resend)
+python3 scripts/imessage_send.py --file "weeks/week of 2025-08-18.md" --reset-log --yes
+```
+
+### When to Use
+- For scheduled outreach messages
+- For automated follow-ups
+- For batch messaging from planning files
+- **Always dry-run first** before sending
+
+### Special Features
+- **Safety**: Dry-run by default; requires explicit `--yes` flag
+- **Idempotency**: Tracks sent messages in `.meta/imessage_sent.log`
+- **Accessibility**: May require terminal Accessibility permissions
+
+---
+
+## 4. iMessage Dump (`imessage_dump.py`)
+
+### What It Does
+Read-only export of iMessage conversations. Safely copies Messages database to temp file for querying.
+
+### Parameters
+- **--contacts** (required): Comma-separated contact identifiers (phone, email, or name fragments)
+- **--since** (optional): Filter by date - `all`, `today`, `yesterday`, `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM` (default: `2001-01-01`)
+- **--limit** (optional): Max messages to retrieve (0 = no limit)
+- **--output** (optional): Output file path (otherwise stdout)
+- **--format** (optional): Output format - `markdown`, `jsonl`, or `csv` (default: `markdown`)
+
+### Usage Examples
+```bash
+# Export entire conversation to stdout
+python3 scripts/imessage_dump.py --contacts "john smith" --since 2001-01-01
+
+# Export recent messages to markdown file
+python3 scripts/imessage_dump.py --contacts "john smith" \
+  --since 2023-01-01 --output "/tmp/john_smith_messages.md"
+
+# Multiple contact filters
+python3 scripts/imessage_dump.py --contacts "+14155551234,john@example.com,smith" --since yesterday
+
+# Export as JSON
+python3 scripts/imessage_dump.py --contacts "john smith" --since today --format jsonl
+
+# Limit results
+python3 scripts/imessage_dump.py --contacts "sarah" --since 2025-01-01 --limit 100
+```
+
+### When to Use
+- For archiving conversations
+- For reviewing message history
+- For extracting data from iMessage
+- For creating context documentation from messages
+- **Requires Full Disk Access** for terminal app
+
+### Special Features
+- **Read-only**: Never modifies Messages database
+- **Safe**: Copies DB to temp location before querying
+- **Contact Mapping**: Loads from macOS Contacts to expand name searches
+- **Flexible Filtering**: By date, contact, or multiple identifiers
+
+---
+
+## 5. iMessage Recent Threads (`imessage_recent_threads.py`)
+
+### What It Does
+Fetches the N most recent iMessage conversation threads with their complete message history. Unlike `imessage_dump.py` which requires specific contacts, this tool automatically finds and exports your most recent conversations.
+
+### Parameters
+- **--threads** (optional): Number of recent conversation threads to fetch (default: 30)
+- **--messages-per-thread** (optional): Max messages per thread (0 = all messages, default: 0 for unlimited)
+- **--output** (optional): Output to single file with thread separators
+- **--output-dir** (optional): Output directory (creates one file per thread)
+- **--format** (optional): Output format - `markdown` or `jsonl` (default: `markdown`)
+- **--verbose** (optional): Verbose output to stderr
+
+### Usage Examples
+```bash
+# Get 30 most recent conversations to stdout
+python3 scripts/imessage_recent_threads.py --threads 30
+
+# Save to single file with all threads
+python3 scripts/imessage_recent_threads.py --threads 30 --output /tmp/recent_convos.md
+
+# Save to directory (one file per thread)
+python3 scripts/imessage_recent_threads.py --threads 30 --output-dir /tmp/recent_convos/
+
+# Limit messages per thread (for faster processing)
+python3 scripts/imessage_recent_threads.py --threads 30 --messages-per-thread 100 --output-dir /tmp/recent/
+
+# Export as JSONL for programmatic processing
+python3 scripts/imessage_recent_threads.py --threads 30 --format jsonl --output /tmp/threads.jsonl
+
+# Verbose mode
+python3 scripts/imessage_recent_threads.py --threads 30 --verbose --output-dir /tmp/convos/
+```
+
+### When to Use
+- When you want to review your most recent conversations without knowing specific contacts
+- For extracting context from recent communication activity
+- When enriching CRM with recent conversation data
+- For analyzing communication patterns across all your recent threads
+- **Requires Full Disk Access** for terminal app
+
+### Output Formats
+
+#### Markdown (default)
+Each thread includes:
+- Thread number and contact/chat name
+- Chat identifier (phone/email)
+- Last message timestamp
+- Message count
+- Full conversation with timestamps and sender labels
+
+#### JSONL
+One JSON object per message with:
+- `chat_id`: Unique chat identifier
+- `chat_name`: Display name or identifier
+- `sent_ts`: Message timestamp
+- `sender`: Sender name (mapped from Contacts)
+- `text`: Message text
+
+### Special Features
+- **Auto-Discovery**: Finds recent threads automatically based on last message timestamp
+- **Read-only**: Never modifies Messages database
+- **Safe**: Copies DB to temp location before querying
+- **Contact Mapping**: Loads from macOS Contacts to map phone/email to names
+- **Flexible Output**: Single file with separators or separate file per thread
+- **Complete History**: Gets full conversation history for each thread (or limited with `--messages-per-thread`)
+
+### CRM Integration Workflow
+1. Run tool to get recent conversations: `python3 scripts/imessage_recent_threads.py --threads 30 --output-dir /tmp/recent/`
+2. Review extracted conversations
+3. Identify leads, follow-ups, or context needed for CRM
+4. Copy relevant insights into CRM files (people, leads, projects)
+5. Use for weekly planning or relationship management
+
+---
+
+## 6. iMessage Ingest (`imessage_ingest.py`)
+
+### What It Does
+Scans iMessages for task cues (e.g., "todo:", "task:") and generates `@reminder` or `@calendar` tags.
+
+### Parameters
+- **--since** (required): Start date - `today`, `yesterday`, or `YYYY-MM-DD`
+- **--contains** (optional): Filter messages containing substring
+- **--contacts** (optional): Comma-separated contact filters
+- **--default-at** (optional): Default reminder time (default: `today 10:00`)
+- **--list** (optional): Reminders list name (default: `Work`)
+- **--add-calendar** (optional): Also emit calendar blocks for focus items
+- **--calendar** (optional): Calendar name (default: `Work`)
+- **--duration** (optional): Calendar event duration (default: `30m`)
+- **--output-file** (optional): Append tags to this file (otherwise stdout)
+- **--dry-run** (optional): Print only, don't write
+
+### Usage Examples
+```bash
+# Dry run - show inferred reminders from today
+python3 scripts/imessage_ingest.py --since "today" --dry-run
+
+# Append to weekly file
+python3 scripts/imessage_ingest.py --since "2025-08-15" \
+  --output-file "weeks/week of 2025-08-18.md"
+
+# Include calendar blocks for focus items
+python3 scripts/imessage_ingest.py --since "today" \
+  --add-calendar --default-at "today 10:00" --calendar "Work" \
+  --output-file "weeks/week of 2025-08-18.md"
+
+# Filter by contact
+python3 scripts/imessage_ingest.py --since "today" --contacts "david,sean" --dry-run
+```
+
+### When to Use
+- For extracting tasks from iMessages automatically
+- During weekly planning to capture external requests
+- When messages contain task language ("todo:", "task:")
+- **Requires Full Disk Access** for terminal app
+
+### Special Features
+- **Pattern Recognition**: Detects "todo:", "task:", "to-do:" patterns
+- **Focus Detection**: Identifies focus blocks and creates calendar events
+- **Safe**: Read-only; copies Messages DB before querying
+
+---
+
+## 7. Email Search (`email_search.py`)
+
+### What It Does
+Fast email search using Mail's SQLite database directly. Much faster than JXA for large mailboxes. Queries the Envelope Index database to find emails by sender or subject.
+
+### Parameters
+- **--from** (optional): Search sender (name or email address)
+- **--subject** (optional): Search subject line
+- **--sent** (optional): Search only sent mail (filters to Sent mailbox)
+- **--body** (optional): Include email body content in results
+- **--body-limit** (optional): Limit body text length (e.g., 500 characters)
+- **--limit** (optional): Max results to return (default: 100)
+- **--json** (optional): Output as JSON instead of table
+
+### Usage Examples
+```bash
+# Search emails from a specific sender
+python3 scripts/email_search.py --from "john@example.com"
+
+# Search by sender name
+python3 scripts/email_search.py --from "John Smith"
+
+# Search by subject
+python3 scripts/email_search.py --subject "project update"
+
+# Combine sender and subject filters
+python3 scripts/email_search.py --from "example.com" --subject "invoice"
+
+# Increase result limit
+python3 scripts/email_search.py --from "newsletter" --limit 500
+
+# Search only sent mail
+python3 scripts/email_search.py --sent --limit 100
+
+# Get sent mail with body content
+python3 scripts/email_search.py --sent --body --body-limit 500
+
+# Export as JSON for processing
+python3 scripts/email_search.py --from "support@" --json > results.json
+```
+
+### When to Use
+- For quickly searching large mailboxes
+- When you need to find emails by sender or subject
+- For tracking sent emails to understand relationship state
+- For extracting specific email threads
+- When JXA-based tools are too slow
+- For building email processing pipelines
+- For daily CRM sync to capture both received and sent communications
+
+### Special Features
+- **Very Fast**: Direct SQLite access, no JXA overhead
+- **Read-Only**: Safe database access using read-only mode
+- **Auto-Detection**: Finds Mail database across different macOS versions (V8, V9, V10)
+- **Flexible Matching**: Searches both sender name and email address
+- **Simple Output**: Clean table or JSON format
+
+---
+
+## 8. Email Cleanup (`targeted_cleanup.py`)
+
+### What It Does
+Deletes unwanted emails (marketing, product updates, event invites) while preserving important senders. Designed to work with `email_search.py` JSON output.
+
+### Parameters
+- **--dry-run** (optional): Show what would be deleted (default behavior)
+- **--delete** (optional): Actually delete (requires --yes)
+- **--yes** (optional): Confirm deletion
+
+### Usage Examples
+```bash
+# Dry run - see what would be deleted from specific sender
+python3 scripts/email_search.py --from "newsletter" --limit 500 --json | \
+  python3 scripts/targeted_cleanup.py --dry-run
+
+# Actually delete (requires confirmation)
+python3 scripts/email_search.py --from "marketing@" --limit 500 --json | \
+  python3 scripts/targeted_cleanup.py --delete --yes
+
+# Search and clean by subject pattern
+python3 scripts/email_search.py --subject "unsubscribe" --limit 1000 --json | \
+  python3 scripts/targeted_cleanup.py --dry-run
+```
+
+### When to Use
+- For bulk email cleanup
+- After reviewing dry-run output
+- When inbox is cluttered with marketing/notifications
+- **Always dry-run first** before deleting
+
+### Special Features
+- **Safe Defaults**: Preserves important domains (configurable)
+- **Pattern-based**: Deletes by domain, sender pattern, and subject pattern
+- **Pipe-friendly**: Works with email_search.py JSON output
+- **Confirmation Required**: Must use `--delete --yes` to actually delete
+
+### Preservation Rules
+The script preserves emails from:
+- Domains and senders configured in `PRESERVE_DOMAINS` and `PRESERVE_SENDERS`
+
+### Deletion Rules
+Deletes emails matching:
+- Known marketing/promo domains (PostHog, Linear, Luma, etc.)
+- No-reply/notification addresses
+- Common promo subject patterns ("You're invited", "New login", etc.)
+
+---
+
+## 9. Focus Timer (`focus_timer.sh`)
+
+### What It Does
+macOS focus timer with periodic check-ins. Plays sounds and shows notifications at intervals.
+
+### Parameters
+1. **Task description** (required): String describing the focus task
+2. **Total minutes** (required): Total focus session length
+3. **Interval minutes** (required): Check-in interval
+
+### Usage Examples
+```bash
+# 90-minute focus block with 15-minute check-ins
+./scripts/focus_timer.sh "Draft PRD for AI project" 90 15
+
+# 25-minute Pomodoro
+./scripts/focus_timer.sh "Code review" 25 25
+
+# 2-hour deep work with 30-minute intervals
+./scripts/focus_timer.sh "Implement feature X" 120 30
+```
+
+### When to Use
+- For time-boxed focus sessions
+- During deep work blocks
+- For Pomodoro technique
+- When avoiding context switching
+
+### Special Features
+- **Audible Alerts**: Plays system sound at each interval (not blocked by Focus mode)
+- **Notifications**: Shows macOS notification with time remaining
+- **Force Sound**: Set `FOCUS_FORCE_SOUND=1` to temporarily unmute during alerts
+- **Custom Sounds**: Set `FOCUS_SOUND_FILE` environment variable
+- **Cancellable**: Ctrl+C cancels timer with notification
+
+### Environment Variables
+- **FOCUS_SOUND_FILE**: Path to sound file (default: `/System/Library/Sounds/Submarine.aiff`)
+- **FOCUS_FORCE_SOUND**: Set to `1` to temporarily unmute system (default: `0`)
+- **FOCUS_MIN_VOLUME**: Minimum volume level 0-100 when force sound enabled (default: `50`)
+
+---
+
+## 10. Whisper Transcript Extractor (`whisper_extract_crm.py`)
+
+### What It Does
+Extracts transcripts from MacWhisper `.whisper` files (ZIP archives containing transcription data) for CRM enrichment. Safely copies files to `/tmp` before extraction to avoid modifying originals.
+
+### File Format
+`.whisper` files are ZIP archives containing:
+- `metadata.json`: Complete transcription with timestamps, speaker labels, and metadata
+- `originalAudio`: Original audio file (m4a, wav, etc.)
+- `version`: Format version number
+
+### Parameters
+- **--source-dir** (optional): Directory containing .whisper files (default: `~/macwhisper`)
+- **--file** (optional): Process a single .whisper file instead of directory
+- **--output-dir** (optional): Output directory (default: `/tmp/whisper_transcripts_TIMESTAMP`)
+- **--format** (optional): Output format - `markdown` or `json` (default: `markdown`)
+- **--verbose** (optional): Verbose output
+
+### Usage Examples
+```bash
+# Extract all transcripts from ~/macwhisper (default)
+python3 scripts/whisper_extract_crm.py
+
+# Extract specific file
+python3 scripts/whisper_extract_crm.py --file ~/macwhisper/recording.whisper
+
+# Specify custom source directory
+python3 scripts/whisper_extract_crm.py --source-dir "/path/to/whisper/files"
+
+# Output as JSON for programmatic processing
+python3 scripts/whisper_extract_crm.py --format json
+
+# Custom output directory
+python3 scripts/whisper_extract_crm.py --output-dir "/tmp/my_transcripts"
+
+# Verbose mode
+python3 scripts/whisper_extract_crm.py --verbose
+```
+
+### When to Use
+- After recording calls/meetings with MacWhisper
+- When enriching CRM with conversation context
+- For extracting insights from recorded conversations
+- When preparing meeting notes from audio transcripts
+- For batch processing multiple recorded conversations
+
+### Output Formats
+
+#### Markdown (default)
+- Header with filename and metadata
+- Language, model, creation date
+- Speaker list
+- Full transcript text
+- Detailed transcript with timestamps and speaker labels
+
+#### JSON
+- Structured data for programmatic processing
+- Includes all metadata, speakers, segments
+- Timestamps in both milliseconds and seconds
+- Full text and segmented transcript
+
+### Special Features
+- **Safe Processing**: Copies files to `/tmp` before extraction (never modifies originals)
+- **Speaker Recognition**: Preserves speaker labels from transcription
+- **Timestamp Formatting**: Converts milliseconds to readable MM:SS format
+- **Batch Processing**: Can process entire directories at once
+- **Multiple Formats**: Both human-readable markdown and machine-readable JSON
+- **CRM-Ready**: Output structured for easy integration into people/project files
+
+### CRM Integration Workflow
+1. Record conversations with MacWhisper (saves to `~/macwhisper`)
+2. Extract transcripts: `python3 scripts/whisper_extract_crm.py`
+3. Review extracted markdown files in `/tmp/whisper_transcripts_*`
+4. Copy relevant insights into CRM files:
+   - People files: Add to interaction notes
+   - Project files: Add to meeting notes or updates
+   - Lead files: Add to qualification notes
+5. Reference original audio if needed (preserved in .whisper archive)
+
+### Example Output Structure (Markdown)
+
+```markdown
+# Transcript: Call with Client Name
+
+## Metadata
+- **File:** recording.whisper
+- **Language:** en
+- **Model:** whisperKit
+- **Created:** 2025-11-12 09:30:45
+
+## Speakers
+- You
+- Client Name
+
+## Full Transcript
+[Complete transcript as continuous text]
+
+## Detailed Transcript
+**You** [00:15 - 00:28]
+Hello, thanks for taking the time to meet today...
+
+**Client Name** [00:29 - 00:45]
+Thanks for reaching out. I'm interested in learning more...
+```
+
+---
+
+## Integration with Workflow
+
+### Weekly Planning Flow
+1. Create weekly file with column layout
+2. Add daily habits and specific tasks
+3. Add `@reminder(...)` tags in Automations section for scheduled items
+4. Add `@calendar(...)` tags for focus blocks
+5. Run `reminders_cli.py` to create reminders
+6. Run `calendar_cli.py` to create calendar events
+7. Check load: `python3 scripts/reminders_cli.py --report-day today`
+
+### Daily Workflow
+1. Check reminder load for today: `--report-day today`
+2. Search emails by sender/subject: `python3 scripts/email_search.py --from "sender"`
+3. Clean up inbox: pipe email search results to `targeted_cleanup.py`
+4. Check iMessages for tasks: `imessage_ingest.py --since today --dry-run`
+5. Review voice dictations: `python3 scripts/wispr_dump.py` (today) or `--since yesterday`
+6. Start focus timer for deep work blocks
+
+### Outreach Workflow
+1. Add `@imessage(...)` tags to weekly file
+2. Dry-run: `imessage_send.py --file "..." --dry-run`
+3. Review output
+4. Send: `imessage_send.py --file "..." --yes --verbose`
+
+### Archive/Analysis Workflow
+1. Dump iMessage conversations: `imessage_dump.py`
+2. Search and export email data: `email_search.py --json`
+3. Extract call transcripts: `whisper_extract_crm.py`
+4. Extract voice dictations: `wispr_dump.py --since 7d --format plain`
+5. Process with external tools or LLM
+
+### CRM Enrichment Workflow
+1. After meetings/calls: Record with MacWhisper
+2. Extract transcripts: `python3 scripts/whisper_extract_crm.py`
+3. Extract voice dictations: `python3 scripts/wispr_dump.py --since yesterday`
+4. Review extracted data
+5. Update CRM files:
+   - Add key insights to people files
+   - Update project status and notes
+   - Enrich lead qualification information
+6. Archive transcript files as needed
+
+---
+
+## Common Flags Across Scripts
+
+- **--dry-run**: Preview without executing (reminders, calendar, imessage_send, imessage_ingest)
+- **--verbose**: Detailed logging (reminders, calendar, imessage_send, whisper_extract_crm)
+- **--file**: Input markdown file path (reminders, calendar, imessage_send)
+- **--yes**: Confirmation for destructive actions (imessage_send, targeted_cleanup)
+- **--timeout**: AppleScript timeout in seconds (reminders, calendar, default: 12)
+- **--format**: Output format (imessage_dump: markdown/jsonl/csv, whisper_extract_crm: markdown/json)
+- **--output** / **--output-dir**: Specify output location (imessage_dump, whisper_extract_crm)
+
+---
+
+## System Requirements
+
+### Permissions Needed
+- **Full Disk Access**: Required for iMessage scripts (imessage_dump, imessage_ingest)
+  - Grant to Terminal/iTerm in: System Settings > Privacy & Security > Full Disk Access
+- **Accessibility**: May be required for iMessage sending
+  - Grant to Terminal/iTerm in: System Settings > Privacy & Security > Accessibility
+- **Automation**: AppleScript access to Mail, Calendar, Reminders, Messages
+
+### macOS Only
+All scripts require macOS with:
+- AppleScript (`osascript`)
+- Apple Mail (for email scripts)
+- Apple Reminders (for reminders_cli.py)
+- Apple Calendar (for calendar_cli.py)
+- Messages app (for iMessage scripts)
+
+---
+
+## Troubleshooting
+
+### "osascript failed" or permission errors
+- Grant Full Disk Access or Accessibility permissions
+- Check System Settings > Privacy & Security
+
+### "File not found" for Messages database
+- Ensure Full Disk Access is granted
+- Default path: `~/Library/Messages/chat.db`
+
+### Reminders/Calendar not creating
+- Check that AppleScript can control the app
+- Try increasing `--timeout` value
+- Verify list/calendar names exist
+
+### iMessages not sending
+- Verify Messages app is signed into iMessage
+- Check contact identifiers (phone/email format)
+- Ensure Accessibility permission granted
+
+---
+
+## 11. Action Items Report (`action_items_report.py`)
+
+### What It Does
+Scans all CRM files for action items and generates prioritized reports. Extracts action items from `/active_leads/`, `/projects/`, and `/people/` directories with priority, date, and context information.
+
+### Parameters
+- **--dir** (optional): Directory to scan (default: current directory)
+- **--priority** (optional): Filter by priority - `URGENT`, `HIGH`, `MEDIUM`, `LOW`, or `ALL` (default: `ALL`)
+- **--since** (optional): Only show items added on or after this date (YYYY-MM-DD)
+- **--before** (optional): Only show items added before this date (YYYY-MM-DD)
+- **--format** (optional): Output format - `table`, `json`, or `markdown` (default: `table`)
+- **--output** (optional): Output file path (default: print to stdout)
+
+### Usage Examples
+```bash
+# Show all action items
+python3 scripts/action_items_report.py
+
+# Show only URGENT items
+python3 scripts/action_items_report.py --priority URGENT
+
+# Show only HIGH priority items
+python3 scripts/action_items_report.py --priority HIGH
+
+# Show items added in the last week
+python3 scripts/action_items_report.py --since 2025-11-06
+
+# Show items added today or later
+python3 scripts/action_items_report.py --since 2025-11-13
+
+# Combine priority and date filters
+python3 scripts/action_items_report.py --priority URGENT --since 2025-11-13
+
+# Export to markdown file
+python3 scripts/action_items_report.py --format markdown --output my_tasks.md
+
+# Export to JSON for processing
+python3 scripts/action_items_report.py --format json --output tasks.json
+```
+
+### When to Use
+- For daily/weekly task review and prioritization
+- When planning your work schedule
+- To find all URGENT items across the CRM
+- To track action items added recently
+- For generating task reports for stakeholders
+
+### Special Features
+- **Automatic Priority Detection**: Recognizes `**URGENT:**`, `**HIGH:**`, `**MEDIUM:**`, `**LOW:**` keywords and emoji priorities (🔴🟡🟢⚪)
+- **Date Extraction**: Parses `*(added YYYY-MM-DD)*` and `*(moved from YYYY-MM-DD)*` tags
+- **Context Generation**: Shows section headers and file location for each item
+- **Smart Sorting**: Groups by priority (URGENT → HIGH → MEDIUM → LOW) then by date
+- **File Path Display**: Full path to source file for easy navigation
+
+### Output Format
+
+#### Table (default)
+```
+========================================================
+🔴 URGENT
+========================================================
+
+[2025-11-13] **URGENT:** Respond to client proposal
+  File: projects/client_project.md
+  Line: 45
+  Context: Action Items
+```
+
+#### Markdown
+```markdown
+# Action Items Report
+
+## 🔴 URGENT
+
+### [2025-11-13] Respond to client proposal
+- **File:** projects/client_project.md
+- **Line:** 45
+- **Context:** Action Items
+```
+
+#### JSON
+```json
+[
+  {
+    "priority": "URGENT",
+    "text": "Respond to client proposal",
+    "date": "2025-11-13",
+    "file": "projects/client_project.md",
+    "line": 45,
+    "context": "Action Items"
+  }
+]
+```
+
+### Standard Action Item Format
+
+For best results, action items should follow this format:
+```markdown
+- [ ] **PRIORITY:** Task description *(added YYYY-MM-DD)*
+```
+
+Where:
+- **PRIORITY** is one of: `URGENT`, `HIGH`, `MEDIUM`, or `LOW`
+- Date tag uses format: `*(added YYYY-MM-DD)*` or `*(moved from YYYY-MM-DD)*`
+
+See `.cursor/rules/action-items-standard.mdc` for complete formatting guidelines.
+
+---
+
+## 12. Slack Export (`slack_dump.py`)
+
+### What It Does
+Read-only export of Slack conversations with filtering. Connects to Slack API to export messages from channels and DMs.
+
+### Setup Required
+1. Create Slack App at https://api.slack.com/apps
+2. Add OAuth scopes:
+   - `channels:history` (public channels)
+   - `groups:history` (private channels)
+   - `im:history` (DMs)
+   - `mpim:history` (group DMs)
+   - `users:read` (user info)
+   - `channels:read` (channel list)
+3. Install app to workspace and get OAuth token
+4. Set token: `export SLACK_TOKEN="xoxb-your-token-here"`
+
+### Parameters
+- **--token** (optional): Slack OAuth token (or set SLACK_TOKEN env var)
+- **--channels** (optional): Comma-separated channel names (e.g., "general,sales")
+- **--dms** (optional): Comma-separated user emails/IDs for DM export
+- **--all-channels** (optional): Export all public channels you're a member of
+- **--since** (optional): Start date - `today`, `yesterday`, `last-week`, or `YYYY-MM-DD` (default: `2001-01-01`)
+- **--before** (optional): End date - `YYYY-MM-DD`
+- **--contains** (optional): Filter messages by keywords (comma-separated, case-insensitive)
+- **--from-user** (optional): Filter by sender (email or display name)
+- **--limit** (optional): Max messages per channel (0 = no limit, default: 0)
+- **--output** (optional): Output file path (default: stdout)
+- **--format** (optional): Output format - `markdown`, `jsonl`, or `csv` (default: `markdown`)
+- **--verbose** (optional): Verbose output to stderr
+
+### Usage Examples
+```bash
+# Export all messages from a channel
+python3 scripts/slack_dump.py --channels "general"
+
+# Export with date filter
+python3 scripts/slack_dump.py --channels "sales,partnerships" --since "2025-11-01"
+
+# Search for keywords
+python3 scripts/slack_dump.py --channels "general" --contains "proposal,contract"
+
+# Export DMs with specific user
+python3 scripts/slack_dump.py --dms "user@example.com"
+
+# Export all channels you're in
+python3 scripts/slack_dump.py --all-channels --since "last-week"
+
+# Filter by sender
+python3 scripts/slack_dump.py --channels "sales" --from-user "john@company.com"
+
+# Save to file
+python3 scripts/slack_dump.py --channels "sales" --output "/tmp/slack_export.md"
+
+# Export as JSON for processing
+python3 scripts/slack_dump.py --channels "general" --format jsonl --output /tmp/slack.jsonl
+
+# Export as CSV
+python3 scripts/slack_dump.py --channels "general" --format csv --output /tmp/slack.csv
+
+# Verbose mode
+python3 scripts/slack_dump.py --channels "general" --verbose
+```
+
+### When to Use
+- For archiving Slack conversations
+- When reviewing message history from channels
+- For extracting context from Slack for CRM enrichment
+- When searching for specific discussions or topics
+- For compliance or audit purposes
+- **Requires Slack API OAuth token**
+
+### Special Features
+- **Read-only**: Never posts or modifies anything in Slack
+- **Rate Limiting**: Automatically handles Slack API rate limits with delays
+- **Contact Mapping**: Resolves user IDs to display names using Slack's user API
+- **Flexible Filtering**: By channel, DM, date range, keywords, and sender
+- **Multiple Formats**: Markdown (readable), JSONL (structured), or CSV (spreadsheet)
+
+### Output Formats
+
+#### Markdown (default)
+```markdown
+# Slack Export
+Exported: 2025-11-13 14:30
+Conversations: 2
+
+## #sales
+Messages: 45
+
+**John Smith** [2025-11-10 09:15:32]
+> Hey team, following up on the proposal we sent to ACME Corp...
+
+**Sarah Johnson** [2025-11-10 09:20:15]
+> Great! They responded positively. Let's schedule a call.
+```
+
+#### JSONL
+```json
+{"channel": "#sales", "ts": "1699611332.123", "sent_ts": "2025-11-10 09:15:32", "sender": "John Smith", "text": "Hey team, following up..."}
+{"channel": "#sales", "ts": "1699611615.456", "sent_ts": "2025-11-10 09:20:15", "sender": "Sarah Johnson", "text": "Great! They responded..."}
+```
+
+#### CSV
+```csv
+channel,ts,sent_ts,sender,text
+#sales,1699611332.123,2025-11-10 09:15:32,John Smith,Hey team, following up...
+#sales,1699611615.456,2025-11-10 09:20:15,Sarah Johnson,Great! They responded...
+```
+
+### CRM Integration Workflow
+1. Export relevant Slack conversations: `python3 scripts/slack_dump.py --channels "sales" --since "2025-11-01" --output /tmp/slack.md`
+2. Review exported conversations
+3. Identify leads, follow-ups, or context needed for CRM
+4. Copy relevant insights into CRM files:
+   - People files: Add to interaction notes
+   - Project files: Add to status updates or notes
+   - Lead files: Add to qualification or discussion notes
+5. Reference Slack thread links if needed
+
+### Common Use Cases
+
+**Weekly CRM Sync:**
+```bash
+# Export last week's sales and partnership discussions
+python3 scripts/slack_dump.py --channels "sales,partnerships" \
+  --since "last-week" --output /tmp/weekly_slack.md
+```
+
+**Lead Research:**
+```bash
+# Find all mentions of a specific company
+python3 scripts/slack_dump.py --all-channels \
+  --contains "Acme Corp" --since "2025-01-01"
+```
+
+**DM Archive:**
+```bash
+# Export DMs with key contacts
+python3 scripts/slack_dump.py --dms "john@company.com,sarah@company.com" \
+  --since "2025-01-01" --output /tmp/key_dms.md
+```
+
+---
+
+## 13. Person Data Dump (`person_dump.py`)
+
+### What It Does
+Comprehensive single-person enrichment tool that dumps ALL available data for a specific contact: iMessages, emails, and complete Whisper transcripts. Automatically extracts identifiers from the person's CRM file.
+
+### Parameters
+- **person_name** (required): Name of the person (positional argument, matches filename in `/people/`)
+
+### Usage Examples
+```bash
+# Dump everything for a person
+python3 scripts/person_dump.py "Jane Doe"
+
+# Dump for another contact
+python3 scripts/person_dump.py "John Smith"
+
+# Redirect to file for easier review
+python3 scripts/person_dump.py "Jane Doe" > /tmp/jane_doe_full_dump.txt
+```
+
+### When to Use
+- When enriching a person's CRM file with comprehensive context
+- Before an important meeting to review all past interactions
+- When you need "everything we have" on someone in one place
+- For updating stale CRM entries with fresh data
+- To find connections and context across all communication channels
+
+### Special Features
+- **Dead Simple**: Just provide a name, everything else is automatic
+- **Auto-Extraction**: Reads phone, email, company from person's CRM file
+- **Complete Transcripts**: Dumps entire Whisper call recordings, not just excerpts
+- **Smart Whisper Search**: Searches for any substring of name or company (flexible matching)
+- **All Communication Channels**: iMessage (full threads), Email (subject/date), Whisper (complete transcripts)
+- **Outcome-Focused**: Designed for manual review and CRM enrichment, not automated processing
+
+### What Gets Dumped
+
+1. **iMessages**: Complete conversation history (if phone number in CRM file)
+2. **Emails**: All emails from/to the person (if email in CRM file)
+   - Subject lines
+   - Dates
+   - From/To addresses
+3. **Whisper Transcripts**: Full text of any recorded calls mentioning:
+   - Any part of their name (first, last, etc.)
+   - Their company name
+   - Includes complete transcript with timestamps and speakers
+
+### Typical Workflow
+```bash
+# 1. Run the dump
+python3 scripts/person_dump.py "Contact Name" > /tmp/contact_dump.txt
+
+# 2. Review the output (use your editor/less/more)
+less /tmp/contact_dump.txt
+
+# 3. Manually update their CRM file with key insights
+# Focus on:
+# - New relationship notes
+# - Key interactions timeline
+# - Business context from calls
+# - Follow-up items
+```
+
+### Example Output Structure
+```
+================================================================================
+PERSON DATA DUMP: Jane Doe
+================================================================================
+
+📧 Email: jane@example.com
+📱 Phone: +14155551234
+🏢 Company: Acme Corp
+
+================================================================================
+IMESSAGE CONVERSATIONS
+================================================================================
+[Full message thread if phone found]
+
+================================================================================
+EMAIL SEARCH RESULTS
+================================================================================
+[All emails with subject/date if email found]
+
+================================================================================
+WHISPER TRANSCRIPTS
+================================================================================
+Mentioned in 5 transcript(s):
+
+================================================================================
+📄 Call with Jane Oct 2 2025.md
+================================================================================
+# Transcript: Call with Jane
+[Complete transcript with all speakers and timestamps]
+
+================================================================================
+END DATA DUMP
+================================================================================
+```
+
+### Prerequisites
+- Person must have a file in `/people/` directory
+- `/tmp/whisper_all/` must exist with extracted transcripts (run `whisper_extract_crm.py` first)
+- Full Disk Access for iMessage/Email database access
+
+---
+
+## 15. Granola Meeting Transcripts (`granola_dump.py`)
+
+### What It Does
+Extracts meeting transcripts from Granola's local cache. Granola is a meeting note-taking app that records and transcribes meetings automatically.
+
+### Data Location
+Granola stores data in `~/Library/Application Support/Granola/cache-v3.json` containing:
+- **documents**: Meeting metadata (title, created_at, notes, attendees)
+- **transcripts**: Full transcript segments with timestamps
+
+### Parameters
+- **--since** (optional): Only include meetings since this date (`YYYY-MM-DD`, `today`, `yesterday`)
+- **--last-n** (optional): Only include the last N meetings (most recent)
+- **--all** (optional): Include all meetings (overrides default today-only behavior)
+- **--search** (optional): Filter meetings by title (case-insensitive substring match)
+- **--format** (optional): Output format - `markdown` or `json` (default: `markdown`)
+- **--output** (optional): Output to single file (otherwise stdout)
+- **--output-dir** (optional): Output directory (creates one file per meeting)
+- **--list-only** (optional): Just list meeting titles without transcripts
+- **--verbose** (optional): Verbose output to stderr
+
+### Usage Examples
+```bash
+# Extract today's meetings (DEFAULT)
+python3 scripts/granola_dump.py
+
+# List all meetings without transcripts
+python3 scripts/granola_dump.py --list-only --all
+
+# Extract last 5 meetings
+python3 scripts/granola_dump.py --last-n 5
+
+# Extract all meetings since a date
+python3 scripts/granola_dump.py --since 2026-01-01
+
+# Search for specific meetings
+python3 scripts/granola_dump.py --search "standup" --all
+
+# Save to directory (one file per meeting)
+python3 scripts/granola_dump.py --all --output-dir /tmp/granola_transcripts
+
+# Output as JSON
+python3 scripts/granola_dump.py --last-n 3 --format json
+```
+
+### When to Use
+- After meetings to extract transcripts for CRM enrichment
+- When reviewing what was discussed in recent meetings
+- For searching past meeting content by title
+- When preparing for follow-up meetings (review what was said before)
+- During daily sync to capture meeting context
+
+### Output Format (Markdown)
+```markdown
+# Meeting Title
+
+## Metadata
+- **ID:** uuid
+- **Created:** 2026-01-26T10:00:00.000Z
+- **Creator:** Your Name (you@email.com)
+- **Attendees:** Person 1, Person 2
+
+## Notes
+[Any notes taken during the meeting]
+
+## Transcript
+*239 segments*
+
+**[10:00:15]** First thing that was said...
+
+**[10:00:30]** Response from someone...
+```
+
+### Special Features
+- **Read-only**: Never modifies Granola data
+- **Auto-discovery**: Finds all meetings in local cache
+- **Full transcripts**: Complete transcript with timestamps
+- **Meeting metadata**: Includes attendees, notes, and creation info
+- **Flexible filtering**: By date, count, or title search
+
+### CRM Integration Workflow
+1. After important meetings, extract transcript: `python3 scripts/granola_dump.py --search "client name"`
+2. Review the transcript
+3. Update relevant CRM files:
+   - People files: Add key discussion points
+   - Project files: Add meeting notes and decisions
+   - Lead files: Add qualification insights
+4. Create follow-up action items
+
+---
+
+## Best Practices
+
+1. **Always dry-run first** for reminders, calendar, and iMessage send operations
+2. **Check reminder load** before scheduling more: `--report-day today`
+3. **Use stable IDs** in reminder tags to prevent duplicates when moving tags
+4. **Batch operations** by processing weekly files all at once
+5. **Verify permissions** before first use of each script
+6. **Review email cleanup** in dry-run mode before deleting
+7. **Test with small limits** when experimenting with email scripts
+8. **Run action items report regularly** to stay on top of tasks: `python3 scripts/action_items_report.py --priority URGENT`
+9. **Use date filters** to focus on recent items: `--since 2025-11-01`
+10. **Set up Slack token once** and use environment variable: `export SLACK_TOKEN="xoxb-..."`
+11. **Start with small date ranges** when exporting Slack to test filters before doing large exports
+12. **Run person_dump.py before enriching** anyone's CRM file to get complete context
+
+
+## 14. New Contacts (`new_contacts.py`)
+
+### What It Does
+Finds contacts recently added to the macOS Contacts app and generates draft follow-up messages. Perfect for post-event follow-ups when you've added people to your contacts.
+
+### Parameters
+- **--days** (optional): Number of days to look back (default: 1)
+- **--event** (optional): Event name to include in draft messages
+- **--output** (optional): Output file path (default: stdout)
+
+### Usage Examples
+```bash
+# Contacts added today with event name
+python3 scripts/new_contacts.py --event "Tech Conference"
+
+# Contacts added in last 3 days
+python3 scripts/new_contacts.py --days 3 --event "Networking Week"
+
+# Just show the list (no event name in drafts)
+python3 scripts/new_contacts.py --days 1
+
+# Save to file
+python3 scripts/new_contacts.py --days 1 --event "Conference" --output /tmp/new_contacts.md
+```
+
+### When to Use
+- After networking events when you've added new contacts
+- For batch follow-up messages to people you recently met
+- When you want to see who you've added to Contacts recently
+- For "follow up with people I met at [event]" workflows
+
+### Special Features
+- **Direct Query**: Queries macOS Contacts database directly (fast)
+- **Smart Drafts**: Generates personalized follow-up messages using first names
+- **Event Context**: Optionally includes event name in draft messages
+- **Read-Only**: Never modifies your Contacts
+
+### Example Output
+```markdown
+# New Contacts (Last 1 Day)
+
+## Ready to Message
+
+### Jane Smith
+- **Phone:** +14155559876
+- **Added:** 2025-12-10 22:30
+- **Draft:** Hey Jane, great meeting you at Tech Conference — want to grab coffee next week?
+
+### Bob Johnson
+- **Phone:** +14155551234
+- **Added:** 2025-12-10 23:15
+- **Draft:** Hey Bob, great meeting you at Tech Conference — want to grab coffee next week?
+```
+
+### Typical Workflow
+1. Attend event and add new contacts to your phone
+2. Run script next day: `python3 scripts/new_contacts.py --event "Event Name"`
+3. Review contacts and draft messages
+4. Copy/paste drafts into iMessage or create `@imessage(...)` tags
+
+---
+
+## 16. Wispr Flow Dictations (`wispr_dump.py`)
+
+### What It Does
+Extracts voice dictation history from Wispr Flow's local SQLite database. Wispr Flow records everything you dictate across any app, and this script collates those dictations by timespan.
+
+### Data Location
+Wispr Flow stores data in `~/Library/Application Support/Wispr Flow/flow.sqlite` containing:
+- **History**: All dictation entries with timestamps, app context, word count, and duration
+- **formattedText**: AI-cleaned dictation text (best quality)
+- **asrText**: Raw ASR output
+
+### Parameters
+- **--since** (optional): Since date (`YYYY-MM-DD`, `today`, `yesterday`, or `Nd` like `7d`)
+- **--until** (optional): Until date (`YYYY-MM-DD`)
+- **--all** (optional): Include all dictations (overrides default today-only behavior)
+- **--search** (optional): Search dictation text (case-insensitive)
+- **--app** (optional): Filter by app name (substring match, e.g. `slack`, `iterm2`, `Browser`)
+- **--format** (optional): Output format - `markdown`, `json`, or `plain` (default: `markdown`)
+- **--group-by-app** (optional): Group output by app instead of by date
+- **--stats** (optional): Show summary statistics only
+- **--output** (optional): Output to file (otherwise stdout)
+- **--verbose** (optional): Verbose output to stderr
+
+### Usage Examples
+```bash
+# Extract today's dictations (DEFAULT)
+python3 scripts/wispr_dump.py
+
+# Extract last 7 days
+python3 scripts/wispr_dump.py --since 7d
+
+# Extract date range
+python3 scripts/wispr_dump.py --since 2026-01-20 --until 2026-01-25
+
+# Search for specific topics across all dictations
+python3 scripts/wispr_dump.py --search "pipeline" --all
+
+# Filter by app (only things said in Slack, iTerm, etc.)
+python3 scripts/wispr_dump.py --app slack --all
+python3 scripts/wispr_dump.py --app iterm2 --since 7d
+
+# Plain text output (great for piping to AI or content tools)
+python3 scripts/wispr_dump.py --format plain --since 7d
+
+# JSON for programmatic use
+python3 scripts/wispr_dump.py --format json --since yesterday
+
+# Group by app instead of date
+python3 scripts/wispr_dump.py --group-by-app --since 7d
+
+# Just stats (word count, duration, app breakdown)
+python3 scripts/wispr_dump.py --stats --all
+
+# Save to file
+python3 scripts/wispr_dump.py --since 7d --output /tmp/wispr_week.md
+```
+
+### When to Use
+- For reviewing what you said/dictated over a time period
+- For content creation from voice-first ideas
+- For extracting context from dictation sessions for CRM enrichment
+- During daily sync to capture voice input alongside messages, emails, and meetings
+- When searching for something you know you dictated but can't find
+- For analyzing communication patterns (which apps, word volume, etc.)
+
+### Output Formats
+
+#### Markdown (default)
+Groups by date with app context and word counts:
+```markdown
+# Wispr Flow Dictations
+**122 dictations** | **7,767 words** | **70 min** | 2026-01-28
+
+## 2026-01-28
+
+**[19:01]** `MobileSMS` (190w)
+> When you speak it doesn't stop in the pipeline...
+
+**[19:09]** `iterm2` (181w)
+> I did try, but I couldn't understand how to get it customized...
+```
+
+#### Plain
+Just the text, concatenated. Ideal for piping to other tools or LLMs.
+
+#### JSON
+Structured array with id, timestamp, app, text, raw_text, words, duration_seconds.
+
+### Special Features
+- **Read-only**: Never modifies Wispr Flow database
+- **Safe**: Copies DB to temp location before querying
+- **App-aware**: Tracks which app each dictation was for
+- **Flexible date handling**: Supports relative dates (`7d`, `yesterday`, `today`)
+- **Multiple output modes**: Markdown, JSON, plain text, stats-only

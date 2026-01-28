@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Targeted email cleanup: Delete product updates, event invites, marketing/promos.
-Keep Parlance Labs and other important senders.
+Keep important senders (configure PRESERVE_DOMAINS and PRESERVE_SENDERS).
 
 Usage:
-  python3 scripts/email_cli.py --limit 500 --json | python3 scripts/targeted_cleanup.py --dry-run
-  python3 scripts/email_cli.py --limit 500 --json | python3 scripts/targeted_cleanup.py --delete --yes
+  python3 scripts/email_search.py --limit 500 --json | python3 scripts/targeted_cleanup.py --dry-run
+  python3 scripts/email_search.py --limit 500 --json | python3 scripts/targeted_cleanup.py --delete --yes
 """
 
 import argparse
@@ -35,13 +35,13 @@ DELETE_SUBJECT_PATTERNS = {
     'soak up summer', 'summer vibes', 'escape ladder', 'struggling to choose'
 }
 
-# Preserve these (case-insensitive)
+# Preserve these (case-insensitive) - add your important domains/senders
 PRESERVE_DOMAINS = {
-    'parlance-labs@courses.maven.com', 'maven.com'  # Keep Parlance Labs
+    'important-sender@courses.example.com', 'example-courses.com'
 }
 
 PRESERVE_SENDERS = {
-    'parlance labs', 'parlance-labs'
+    'important sender', 'my-company'
 }
 
 
@@ -50,7 +50,7 @@ def should_delete(email: Dict) -> bool:
     sender = (email.get('sender') or '').lower()
     subject = (email.get('subject') or '').lower()
     
-    # Preserve Parlance Labs
+    # Preserve important senders
     if any(preserve in sender_email for preserve in PRESERVE_DOMAINS):
         return False
     if any(preserve in sender for preserve in PRESERVE_SENDERS):

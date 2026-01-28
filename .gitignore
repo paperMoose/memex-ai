@@ -1,0 +1,51 @@
+# Environment variables (contains secrets)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.log
+.meta/
+
+# Daily sync reports (local only, contains personal data)
+archive/daily_sync_reports/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+logs/
+
+# CRM data directories (create these for your own data)
+people/
+active_leads/
+projects/
+outreach/
+weeks/
+task_context/
+experiments/
+archive/
+proposals/
+exports/

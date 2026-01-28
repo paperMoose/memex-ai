@@ -38,7 +38,9 @@ I will proactively manage CRM files based on our conversation. My primary goal i
 
 To ensure files can be easily searched and processed (e.g., using `grep`):
 
-*   **Consistent Headings:** Use consistent Markdown headings for sections within files (e.g., `## Status`, `## Overview`, `## Action Items`).
+*   **Consistent Headings:** Use consistent Markdown headings for sections within files (e.g., `## Status`, `## Overview`).
+*   **Action Items:** See the action items standard for complete formatting rules. Action items belong ONLY in `/active_leads/` and `/projects/` files, NEVER in `/people/` files.
+*   **Incremental Migration:** When editing existing files, migrate old timeline formats (`Interaction History`, `Recent Interactions`, `Meeting Notes`, etc.) to standardized `## Timeline` section. **CRITICAL:** Preserve ALL content - convert old entries to timeline bullets rather than deleting information. Only migrate files when they're being actively edited.
 *   **`/active_leads/` File Structure:** Each file in `/active_leads/` should contain at least the following status block:
     ```markdown
     ## Status
@@ -98,4 +100,5 @@ This script, located in the root of the workspace, serves two main purposes:
         *   To dump all active leads: `python status_reporter.py --dump-content leads`
         *   To dump all active projects: `python status_reporter.py --dump-content projects`
         *   To dump all people files: `python status_reporter.py --dump-content people`
+        *   To get all people reminders: `python status_reporter.py --include-people-reminders`
     *   The script will print the full Markdown content of each file in the specified category to standard output, with clear separators (e.g., `--- START FILE: ... ---` and `--- END FILE: ... ---`). This output can be copied and provided as context to an LLM.
