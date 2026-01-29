@@ -1,233 +1,137 @@
 # Memex AI
 
-A local-first, AI-powered personal CRM that lives in markdown files. You talk to an AI assistant, it manages your contacts, leads, projects, and follow-ups.
+> *"Consider a future device... in which an individual stores all his books, records, and communications, and which is mechanized so that it may be consulted with exceeding speed and flexibility. It is an enlarged intimate supplement to his memory."*
+>
+> — Vannevar Bush, "As We May Think" (1945)
 
-## Why this exists
+---
 
-Most CRMs are built for teams. If you're a solo founder, consultant, or freelancer, you don't need Salesforce — you need a system that:
+In 1945, the war had just ended. Vannevar Bush, the engineer who coordinated 6,000 scientists in the American war effort, turned his attention to a different problem: how do we manage the explosion of human knowledge?
 
-- **Captures context from where you already communicate** (iMessage, Slack, Email, voice calls)
-- **Stays out of your way** — no forms, no UI, no browser tabs
-- **Keeps everything local** — your relationship data never leaves your machine
-- **Works with AI natively** — the AI *is* the interface
+His answer was the **Memex** — a hypothetical device where a person could store everything they read, write, and think. Not just storage, but *trails* through information. Personal paths of association that would let you retrace your steps, make new connections, and build on your own thinking.
 
-Memex AI stores everything as markdown files in a git repo. You talk to your AI assistant in [Cursor](https://cursor.sh) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code), and it manages the files for you.
+Bush imagined it as a desk with screens and levers. He was describing the personal computer 30 years early.
 
-## What a session looks like
+## The problem hasn't changed
+
+Today we have more tools than Bush could have imagined. And yet the fundamental problem remains: **our knowledge is scattered across dozens of apps, and our relationships slip through the cracks.**
+
+We meet people at conferences and lose their context within days. We have threads across iMessage, Slack, and email with no unified view. We make commitments in conversations that we forget to follow up on. The tools we have are built for teams, not individuals. They require constant manual data entry. They don't connect to where our actual communication happens.
+
+## What if we built the Memex for relationships?
+
+This project is an experiment in that direction.
+
+**Memex AI** is a personal CRM that lives in markdown files and talks to you through AI. There's no UI to learn, no forms to fill out. You just... talk to it. Tell it about your day, paste in meeting notes, forward email threads. It organizes everything into structured files, tracks your commitments, and connects to macOS to create reminders, calendar events, and even send messages.
+
+Everything stays local. Your data never leaves your machine. It's just text files in a git repo — the same way we've been managing code for decades.
+
+## How it works
 
 ```
 You:  I just had coffee with Lisa Chen from Dataflow. They're looking for
-      help building an eval framework for their LLM product. She said to
-      follow up next week with a rough proposal.
+      help building an eval framework for their LLM product. She mentioned
+      following up next week with a rough proposal.
 
-AI:   I'll create a contact file and a lead. [creates people/lisa-chen.md
-      and active_leads/dataflow-eval-framework.md with status, notes, and
-      next steps]
-
-      Want me to set a reminder to follow up?
+AI:   Created people/lisa-chen.md and active_leads/dataflow-eval-framework.md
+      with the context from your meeting. Want me to set a reminder to follow up?
 
 You:  Yeah, Tuesday morning.
 
-AI:   Added @reminder tag. Run `python3 scripts/reminders_cli.py --file
-      weeks/week\ of\ 2025-01-27.md` to create it in Apple Reminders.
+AI:   Added a reminder tag. Run the reminders script when you're ready to sync.
 ```
 
-After a few weeks of use, your repo looks like this:
+After a few weeks, your repo looks like this:
 
 ```
-people/
-  lisa-chen.md            # Background, contact info, interaction history
+people/                          # One file per contact
+  lisa-chen.md
   marcus-wright.md
-  sarah-kim.md
-  ...
 
-active_leads/
-  dataflow-eval-framework.md    # Stage: Proposal Sent, next steps, notes
-  acme-ai-consulting.md
+active_leads/                    # Pipeline opportunities
+  dataflow-eval-framework.md
+  acme-consulting.md
 
-projects/
-  client-mvp-build.md          # Status: In Progress, action items, timeline
-  projects/done/
-    community-workshop.md       # Completed projects move here
+projects/                        # Active work
+  client-mvp-build.md
+  projects/done/                 # Completed work
 
-weeks/
-  week of 2025-01-27.md        # Daily habits, tasks, @reminder/@calendar tags
+weeks/                           # Planning files with automation tags
+  week of 2025-01-27.md
 ```
 
-Each file is plain markdown with structured status blocks that scripts can parse:
+Each file is plain markdown. Structured enough for scripts to parse, human enough to read directly. Your AI assistant manages them through conversation.
 
-```markdown
-# Dataflow Eval Framework
+## The daily sync
 
-## Status
-- **Stage:** Proposal Sent
-- **Next Step:** Follow up if no response by Friday
-- **Last Updated:** 2025-01-28
+The real power comes from connecting this to your actual communication channels. The daily sync script collects:
 
-## Background
-Lisa Chen (CTO) is building an LLM product and needs an evaluation framework...
+- **iMessage** conversations
+- **Email** threads (Apple Mail)
+- **Slack** messages
+- **Voice transcripts** (Granola, Wispr Flow, MacWhisper)
 
-## Action Items
-- [ ] **HIGH:** Send proposal draft by Wednesday *(added 2025-01-28)*
-- [ ] **MEDIUM:** Research their existing test suite *(added 2025-01-28)*
-
-## Timeline
-- **2025-01-27:** Coffee meeting. Lisa described their current eval gaps...
-```
-
-## Quick Start
-
-### 1. Clone and open
-
-```bash
-git clone https://github.com/paperMoose/memex-ai.git
-cd memex-ai
-```
-
-Open in Cursor, or use Claude Code from the terminal (it reads `CLAUDE.md` automatically).
-
-### 2. Create your data directories
-
-```bash
-mkdir -p people active_leads projects outreach weeks archive
-```
-
-### 3. Grant macOS permissions
-
-Your terminal app needs these in **System Settings > Privacy & Security**:
-
-| Permission | Why |
-|-----------|-----|
-| **Full Disk Access** | Read iMessage and Mail databases |
-| **Accessibility** | Send iMessages via AppleScript |
-
-Automation permissions (Reminders, Calendar, Mail, Messages) are prompted automatically on first use.
-
-### 4. Configure for your accounts
-
-Edit `scripts/daily_sync.sh` — replace the placeholder email addresses with yours:
-
-```bash
-# Line ~121: your personal email
-python3 "$SCRIPT_DIR/email_search.py" --from "you@gmail.com" ...
-
-# Line ~130: your work email
-python3 "$SCRIPT_DIR/email_search.py" --from "you@company.com" ...
-```
-
-For Slack integration, create a `.env` file:
-
-```bash
-echo "SLACK_TOKEN=xoxp-your-token" > .env
-```
-
-(See [docs/setup.md](docs/setup.md) for Slack app setup instructions.)
-
-### 5. Start using it
-
-Talk to your AI assistant:
-
-- *"I just met John from Acme Corp at a conference"*
-- *"Run a daily sync for yesterday"*
-- *"What's stale? Anything I should follow up on?"*
-- *"Set a reminder to email Lisa on Tuesday"*
-
-## Daily Sync
-
-The daily sync collects all your communications and surfaces what needs attention:
+It exports everything into contact-organized reports. Your AI reviews them, identifies new contacts, flags stale relationships, and updates your CRM files. Run it every morning:
 
 ```bash
 ./scripts/daily_sync.sh yesterday
 ```
 
-This exports your Slack messages, iMessage threads, and emails into `/tmp/crm_daily_sync_*/`, then processes them into contact directories. Your AI assistant reviews the output and updates your CRM files.
+This is the "trails" that Bush imagined — but automatic, across all your communication.
 
-Run it every morning, or automate it with launchd (see `scripts/automated_daily_sync.sh`).
+## Tag-based automation
 
-## Tag-Based Automation
-
-Embed automation tags in any markdown file:
+Embed tags in any markdown file:
 
 ```markdown
-## Automations
-
-### Reminders
-@reminder(message="Follow up with Lisa", at="2025-01-30 09:00", list="Work", id="lisa-followup")
-
-### Calendar
-@calendar(message="Focus: Write proposal", at="2025-01-29 14:00", duration="90m")
-
-### iMessages
+@reminder(message="Follow up with Lisa", at="Tuesday 09:00", list="Work")
+@calendar(message="Focus: Write proposal", at="tomorrow 14:00", duration="90m")
 @imessage(to="+14155551234", message="Hey, just sent over the proposal!")
 ```
 
-Then run the corresponding script:
+Then run the corresponding script to execute them. All scripts default to dry-run mode. Everything is idempotent — running twice won't create duplicates.
 
-```bash
-python3 scripts/reminders_cli.py --file weeks/week\ of\ 2025-01-27.md --verbose
-python3 scripts/calendar_cli.py --file weeks/week\ of\ 2025-01-27.md --verbose
-python3 scripts/imessage_send.py --file weeks/week\ of\ 2025-01-27.md --yes
-```
+## Why markdown? Why local?
 
-All scripts default to `--dry-run` (preview mode). Add `--yes` for destructive actions. Tags are idempotent — re-running won't create duplicates.
+Three reasons:
 
-## Scripts
+1. **Longevity.** Markdown files will be readable in 50 years. Your CRM SaaS might not exist in 5.
 
-20+ automation scripts, all Python standard library (no pip installs). Here are the ones you'll use most:
+2. **AI-native.** Language models work with text. Markdown is the perfect format for AI to read, write, and reason about.
 
-| Script | What it does |
-|--------|-------------|
-| `daily_sync.sh` | Collect Slack, iMessage, Email into contact reports |
-| `reminders_cli.py` | Create Apple Reminders from `@reminder()` tags |
-| `calendar_cli.py` | Create Calendar events from `@calendar()` tags |
-| `imessage_send.py` | Send iMessages from `@imessage()` tags |
-| `imessage_dump.py` | Export iMessage conversations for a contact |
-| `email_search.py` | Fast email search (SQLite, not JXA) |
-| `person_dump.py` | Dump all data (messages, emails, transcripts) for one person |
-| `action_items_report.py` | Extract action items across all CRM files |
-| `status_reporter.py` | Status overview of all leads and projects |
-| `new_contacts.py` | Find recently-added macOS contacts, draft follow-ups |
+3. **Ownership.** Your relationships are yours. They shouldn't live on someone else's server, subject to their pricing changes and privacy policies.
 
-Full reference with all flags: **[docs/scripts.md](docs/scripts.md)**
+Git gives you version history, backup, and sync across machines — all without any cloud service.
 
-## How it works
+## Getting started
 
-```
-macOS Sources                     CRM Files                    Apple Apps
-(iMessage, Mail, Slack,    →     (markdown in git)       →    (Reminders, Calendar,
- Whisper, Granola, Wispr)        people/, leads/, projects/    Messages)
+1. Clone this repo
+2. Open in [Cursor](https://cursor.sh) or use [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+3. Start talking: *"I just met Sarah from TechCorp at a conference..."*
 
-     Collection scripts               AI assistant              Automation scripts
-     (read-only, safe)            (creates & updates files)    (@reminder, @calendar,
-                                                                @imessage tags)
-```
+For macOS permissions, Slack setup, and troubleshooting: **[docs/setup.md](docs/setup.md)**
 
-**Collection** scripts read macOS databases (copying to temp first — never modifying originals) and export to markdown.
-
-**Processing** cross-references exports against existing CRM files, identifies new contacts, flags stale relationships.
-
-**Automation** scripts parse tags from markdown and execute via AppleScript. Idempotency is tracked in `.cursor/sent_reminders.json` and `.meta/imessage_sent.log`.
-
-## Documentation
-
-- **[Setup Guide](docs/setup.md)** — Permissions, environment, troubleshooting
-- **[Script Reference](docs/scripts.md)** — All scripts with usage examples
-- **[Daily Sync Workflow](docs/daily-sync.md)** — How the sync pipeline works
-- **[Action Items System](docs/action-items.md)** — Task tracking format and priorities
-- **[Architecture](docs/architecture.md)** — System design and key decisions
-
-## AI Agent Support
-
-- **Cursor** — Uses `.cursor/rules/*.mdc` files (loaded automatically)
-- **Claude Code** — Uses `CLAUDE.md` (imports the cursor rules via `@` references)
-- **Other agents** (Codex, etc.) — Uses `AGENT.md` (self-contained, no imports)
+Full script reference: **[docs/scripts.md](docs/scripts.md)**
 
 ## Requirements
 
 - **macOS** (required — deeply integrated with Apple APIs)
-- **Python 3** (standard library only)
-- **Cursor** or **Claude Code** (or any AI coding assistant that reads instruction files)
+- **Python 3** (standard library only, no pip installs)
+- **Cursor** or **Claude Code** (or any AI assistant that reads instruction files)
 
-## License
+## Documentation
 
-MIT
+- [Setup Guide](docs/setup.md) — Permissions, environment, troubleshooting
+- [Script Reference](docs/scripts.md) — All 20+ scripts with usage examples
+- [Daily Sync Workflow](docs/daily-sync.md) — How the sync pipeline works
+- [Architecture](docs/architecture.md) — System design decisions
+
+---
+
+*Bush's Memex was never built. But he was right about what we needed. Eighty years later, we finally have the technology to build it — language models that can understand natural language, APIs into our communication tools, and markdown files that will outlast any app.*
+
+*This is one attempt at that vision.*
+
+---
+
+MIT License
