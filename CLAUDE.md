@@ -2,6 +2,8 @@
 
 A local-first, AI-powered personal CRM and productivity system that lives in markdown files.
 
+For setup, permissions, and system requirements, see [README.md](README.md) and [docs/setup.md](docs/setup.md).
+
 ## Rules (imported from Cursor)
 
 @.cursor/rules/action-items-standard.mdc
