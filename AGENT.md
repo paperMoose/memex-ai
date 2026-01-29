@@ -132,7 +132,7 @@ python3 scripts/person_dump.py "Jane Doe"               # All data for one perso
 ```bash
 python3 scripts/reminders_cli.py --report-day today     # Check today's reminder load
 ./scripts/focus_timer.sh "Deep work" 90 15              # Focus timer with check-ins
-./audit_tasks.sh                                        # Audit incomplete weekly tasks
+./scripts/focus_timer.sh "Deep work" 90 15              # Focus timer with check-ins
 ```
 
 All scripts support `--dry-run` for preview. Destructive actions require `--yes`.

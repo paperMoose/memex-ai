@@ -25,7 +25,6 @@ All scripts are in the `scripts/` directory. They require macOS and use only Pyt
 | `action_items_report.py` | Extract action items from CRM | `--priority`, `--format` |
 | `daily_sync.sh` | Master workflow orchestrator | `today`, `yesterday`, `last-week` |
 | `focus_timer.sh` | Pomodoro-style focus timer | `"task" minutes interval` |
-| `standardize_action_items.py` | Standardize action item format | |
 | `search_active_contacts.py` | Find emails from CRM contacts | `--output` |
 | `process_daily_sync.py` | Process raw exports into reports | `<sync_dir>` |
 | `automated_daily_sync.sh` | Automated sync (launchd) | |
@@ -300,26 +299,6 @@ Pomodoro-style timer with system notifications and sounds.
 ./scripts/focus_timer.sh "Draft PRD" 90 15     # 90 min, check every 15
 ./scripts/focus_timer.sh "Code review" 25 25    # Pomodoro
 ./scripts/focus_timer.sh "Deep work" 120 30     # 2 hours, 30 min intervals
-```
-
----
-
-## Utility Scripts
-
-### Audit Tasks (`audit_tasks.sh`)
-
-Finds incomplete tasks across weekly plan files, color-coded by move count.
-
-```bash
-./audit_tasks.sh
-```
-
-### Filter Tasks (`filter_tasks.sh`)
-
-Groups task context files by status (Complete, In Progress, Not Started, Blocked).
-
-```bash
-./filter_tasks.sh
 ```
 
 ---
